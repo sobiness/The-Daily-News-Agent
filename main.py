@@ -1,13 +1,13 @@
 import os
 import time
+import requests  # <--- WE ARE USING RAW HTTP NOW
 import telebot
-from google import genai
 from firecrawl import Firecrawl
 from dotenv import load_dotenv
 from datetime import datetime
 
-# --- DEBUG PRINT: AM I ALIVE? ---
-print("✅ SCRIPT IS LOADED. Starting imports...")
+# --- DEBUG PRINT ---
+print("✅ SCRIPT STARTED. USING RAW REST API.")
 
 load_dotenv()
 
@@ -17,13 +17,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 FIRECRAWL_KEY = os.environ.get("FIRECRAWL_KEY")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# --- DEBUG PRINT: CHECK KEYS ---
-if TELEGRAM_TOKEN: print("   > Telegram Token found.")
-else: print("   > ❌ Telegram Token MISSING.")
-
-if CHAT_ID: print(f"   > Chat ID found: {CHAT_ID}")
-else: print("   > ❌ Chat ID MISSING.")
-
+# --- SOURCES ---
 SOURCES = [
     "https://github.com/trending/python?since=daily",
     "https://news.ycombinator.com/news",
@@ -45,10 +39,9 @@ def get_smart_news():
     for url in SOURCES:
         try:
             print(f"   --> Scraping: {url}")
-            # Scrape using the new SDK method
+            # Firecrawl v1 direct scrape
             data = app.scrape(url, formats=['markdown'])
             
-            # Access the markdown attribute directly
             if hasattr(data, 'markdown'):
                 raw_text = data.markdown[:3000]
             else:
@@ -57,7 +50,7 @@ def get_smart_news():
             if raw_text:
                 combined_content += f"\n\n=== SOURCE: {url} ===\n{raw_text}"
             else:
-                print(f"   ⚠️ No markdown content found for {url}")
+                print(f"   ⚠️ No markdown content for {url}")
             
             time.sleep(1) 
         except Exception as e:
@@ -67,15 +60,19 @@ def get_smart_news():
     return combined_content
 
 def summarize_with_ai(raw_news):
-    print("🧠 Wake up Gemini...")
+    print("🧠 Wake up Gemini (REST API)...")
     if not GEMINI_API_KEY:
         return "Error: No API Key found."
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    # --- THE "STOP THINKING" REST API CALL ---
+    # We use the standard endpoint which supports API Keys
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    
+    headers = {"Content-Type": "application/json"}
     
     prompt = f"""
     You are a cynical software engineer's assistant. Filter signal from noise.
-
+    
     Raw News:
     {raw_news}
 
@@ -85,15 +82,31 @@ def summarize_with_ai(raw_news):
     2. No fluff. Bullet points. Under 400 words.
     """
 
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+
     try:
-        # --- FIX: SWAPPED TO 1.5 FLASH (Stable) ---
-        response = client.models.generate_content(
-            model='gemini-1.5-flash', 
-            contents=prompt
-        )
-        return response.text
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            print(f"❌ Gemini REST Error: {response.status_code} - {response.text}")
+            # Fallback to a simpler model if 2.5/2.0 fails or is rate limited
+            if response.status_code == 404 or response.status_code == 429:
+                 print("   -> Retrying with gemini-1.5-flash...")
+                 fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+                 fallback_resp = requests.post(fallback_url, headers=headers, json=payload)
+                 if fallback_resp.status_code == 200:
+                     return fallback_resp.json()['candidates'][0]['content']['parts'][0]['text']
+                 
+            return f"Error: AI generation failed ({response.status_code})"
+            
     except Exception as e:
-        print(f"❌ Gemini Error: {e}")
+        print(f"❌ Request Failed: {e}")
         return "Error generating summary."
 
 def send_telegram(message):
