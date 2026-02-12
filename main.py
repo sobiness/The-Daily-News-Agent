@@ -45,7 +45,12 @@ def get_smart_news():
     for url in SOURCES:
         try:
             print(f"   --> Scraping: {url}")
-            data = app.scrape(url, params={'formats': ['markdown']})
+            
+            # --- FIX: REMOVED 'params' ARGUMENT ---
+            # The latest SDK just takes the URL and returns default formats (Markdown included)
+            data = app.scrape(url)
+            
+            # Extract content
             raw_text = data.get('markdown', '')[:3000]
             
             if raw_text:
@@ -65,7 +70,18 @@ def summarize_with_ai(raw_news):
         return "Error: No API Key found."
 
     client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt = f"Summarize this tech news into 3 bullet points for a developer:\n{raw_news}"
+    
+    prompt = f"""
+    You are a cynical software engineer's assistant. Filter signal from noise.
+
+    Raw News:
+    {raw_news}
+
+    TASK: Write a 'Morning Intel' briefing.
+    RULES:
+    1. Sections: 🚨 Breaking, 🛠️ New Tools, 🔬 Research, ⚠️ Security.
+    2. No fluff. Bullet points. Under 400 words.
+    """
 
     try:
         response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
@@ -98,8 +114,5 @@ def main():
     send_telegram(newsletter)
     print("--- 😴 SCRIPT FINISHED ---")
 
-# --- EXECUTION BLOCK (CRITICAL) ---
 if __name__ == "__main__":
     main()
-else:
-    print("❌ SCRIPT WAS IMPORTED, NOT RUN DIRECTLY")
