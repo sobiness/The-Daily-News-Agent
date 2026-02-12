@@ -2,7 +2,7 @@ import os
 import time
 import telebot
 from google import genai
-from firecrawl import FirecrawlApp
+from firecrawl import Firecrawl  # UPDATED IMPORT
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -38,25 +38,33 @@ def get_smart_news():
     if not FIRECRAWL_KEY:
         print("❌ Error: Missing FIRECRAWL_KEY")
         return ""
-        
-    app = FirecrawlApp(api_key=FIRECRAWL_KEY)
+    
+    # --- FIX 1: Use the new Class Name ---
+    app = Firecrawl(api_key=FIRECRAWL_KEY)
+    
     combined_content = f"Date: {datetime.now().strftime('%Y-%m-%d')}\n\n"
 
     for url in SOURCES:
         try:
             print(f"   --> Scraping: {url}")
             
-            # --- FIX: REMOVED 'params' ARGUMENT ---
-            # The latest SDK just takes the URL and returns default formats (Markdown included)
-            data = app.scrape(url)
+            # --- FIX 2: Use correct arguments per docs ---
+            # The new SDK uses 'formats' list
+            data = app.scrape(url, formats=['markdown'])
             
-            # Extract content
-            raw_text = data.get('markdown', '')[:3000]
+            # --- FIX 3: Access attribute directly (Object, not Dict) ---
+            # The docs say: print(doc.markdown)
+            if hasattr(data, 'markdown'):
+                raw_text = data.markdown[:3000]
+            else:
+                # Fallback just in case structure varies slightly
+                raw_text = str(data)[:3000]
             
             if raw_text:
                 combined_content += f"\n\n=== SOURCE: {url} ===\n{raw_text}"
             else:
-                print(f"   ⚠️ No markdown returned for {url}")
+                print(f"   ⚠️ No markdown content found for {url}")
+            
             time.sleep(1) 
         except Exception as e:
             print(f"   ⚠️ Failed to scrape {url}: {e}")
@@ -84,7 +92,10 @@ def summarize_with_ai(raw_news):
     """
 
     try:
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash', 
+            contents=prompt
+        )
         return response.text
     except Exception as e:
         print(f"❌ Gemini Error: {e}")
