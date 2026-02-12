@@ -1,7 +1,7 @@
 import os
 import time
 import telebot
-import google.generativeai as genai
+from google import genai
 from firecrawl import FirecrawlApp
 from datetime import datetime
 
@@ -63,14 +63,11 @@ def get_smart_news():
     return combined_content
 
 def summarize_with_ai(raw_news):
-    """
-    Feeds the raw scraped data into Gemini 1.5 Flash for a newsletter-style summary.
-    """
     print("🧠 Wake up Gemini...")
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-
-    # The "Creative Director" Prompt
+    
+    # NEW CLIENT SETUP
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    
     prompt = f"""
     You are a cynical, high-level software engineer's personal assistant. 
     Your goal is to filter signal from noise.
@@ -90,12 +87,15 @@ def summarize_with_ai(raw_news):
        - ⚠️ **Vulnerabilities/Drama** (Security issues or industry fights)
     3. **Tone:** Professional but conversational. No corporate fluff. 
     4. **Length:** Keep it under 400 words total. Bullet points are best.
-    5. **Links:** If you mention a specific tool or repo found in the text, try to include the name.
 
     GO.
     """
 
-    response = model.generate_content(prompt)
+    # NEW GENERATION CALL
+    response = client.models.generate_content(
+        model='gemini-2.0-flash', 
+        contents=prompt
+    )
     return response.text
 
 def send_telegram(message):
