@@ -2,7 +2,7 @@ import os
 import time
 import telebot
 from google import genai
-from firecrawl import Firecrawl  # UPDATED IMPORT
+from firecrawl import Firecrawl
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -17,7 +17,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 FIRECRAWL_KEY = os.environ.get("FIRECRAWL_KEY")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# --- DEBUG PRINT: CHECK KEYS (Safe version) ---
+# --- DEBUG PRINT: CHECK KEYS ---
 if TELEGRAM_TOKEN: print("   > Telegram Token found.")
 else: print("   > ❌ Telegram Token MISSING.")
 
@@ -38,26 +38,20 @@ def get_smart_news():
     if not FIRECRAWL_KEY:
         print("❌ Error: Missing FIRECRAWL_KEY")
         return ""
-    
-    # --- FIX 1: Use the new Class Name ---
+        
     app = Firecrawl(api_key=FIRECRAWL_KEY)
-    
     combined_content = f"Date: {datetime.now().strftime('%Y-%m-%d')}\n\n"
 
     for url in SOURCES:
         try:
             print(f"   --> Scraping: {url}")
-            
-            # --- FIX 2: Use correct arguments per docs ---
-            # The new SDK uses 'formats' list
+            # Scrape using the new SDK method
             data = app.scrape(url, formats=['markdown'])
             
-            # --- FIX 3: Access attribute directly (Object, not Dict) ---
-            # The docs say: print(doc.markdown)
+            # Access the markdown attribute directly
             if hasattr(data, 'markdown'):
                 raw_text = data.markdown[:3000]
             else:
-                # Fallback just in case structure varies slightly
                 raw_text = str(data)[:3000]
             
             if raw_text:
@@ -92,8 +86,9 @@ def summarize_with_ai(raw_news):
     """
 
     try:
+        # --- FIX: SWAPPED TO 1.5 FLASH (Stable) ---
         response = client.models.generate_content(
-            model='gemini-2.0-flash', 
+            model='gemini-1.5-flash', 
             contents=prompt
         )
         return response.text
