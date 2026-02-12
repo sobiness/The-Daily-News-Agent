@@ -3,41 +3,37 @@ import time
 import telebot
 from google import genai
 from firecrawl import FirecrawlApp
+from dotenv import load_dotenv
 from datetime import datetime
 
-# --- CONFIGURATION (Load from GitHub Secrets) ---
+# Load local environment variables (for testing on your laptop)
+load_dotenv()
+
+# --- CONFIGURATION ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 FIRECRAWL_KEY = os.environ.get("FIRECRAWL_KEY")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") # Optional: Hardcode your ID if you want
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# --- THE HIGH-SIGNAL SOURCE LIST ---
-# We cover: Code, Research, New Tools, Security, and Industry News.
+# --- VERIFIED HIGH-SIGNAL SOURCES ---
 SOURCES = [
-    # 1. WHAT ENGINEERS ARE CODING (Trends)
     "https://github.com/trending/python?since=daily",
-    
-    # 2. THE DISCOURSE (Hacker News is the filter for BS)
     "https://news.ycombinator.com/news",
-    
-    # 3. LATEST AI RESEARCH (The "Brain" stuff)
-    "https://huggingface.co/papers", 
-    
-    # 4. NEW AI TOOLS (Product Launches)
+    "https://huggingface.co/papers",
     "https://www.producthunt.com/topics/artificial-intelligence",
-    
-    # 5. SECURITY & LLM ENGINEERING (Vulnerabilities & Deep Dives)
-    "https://simonwillison.net/", 
-    
-    # 6. INDUSTRY MOVES (Business & funding)
+    "https://simonwillison.net/",
     "https://techcrunch.com/category/artificial-intelligence/"
 ]
 
 def get_smart_news():
     """
-    Scrapes the sources using Firecrawl to get clean Markdown.
+    Scrapes the sources using Firecrawl (v1 SDK pattern).
     """
     print("🔥 Warming up Firecrawl...")
+    if not FIRECRAWL_KEY:
+        print("❌ Error: Missing FIRECRAWL_KEY")
+        return ""
+        
     app = FirecrawlApp(api_key=FIRECRAWL_KEY)
     combined_content = f"Date: {datetime.now().strftime('%Y-%m-%d')}\n\n"
 
@@ -47,25 +43,28 @@ def get_smart_news():
             # Scrape into markdown
             data = app.scrape_url(url, params={'formats': ['markdown']})
             
-            # Extract content. We limit to 3000 chars per source to fit context window safely.
-            # Firecrawl returns a dictionary, we want the 'markdown' key.
-            raw_text = data.get('markdown', '')[:3000]
+            # Firecrawl returns a dict with 'markdown' key
+            raw_text = data.get('markdown', '')[:3000] # Limit chars to save tokens
             
             combined_content += f"\n\n=== SOURCE: {url} ===\n{raw_text}"
-            
-            # Polite delay to not get rate-limited
-            time.sleep(1)
+            time.sleep(1) # Polite delay
             
         except Exception as e:
-            print(f"   ❌ Failed to scrape {url}: {e}")
+            print(f"   ⚠️ Failed to scrape {url}: {e}")
             continue
             
     return combined_content
 
 def summarize_with_ai(raw_news):
+    """
+    Uses the NEW Google GenAI SDK (google-genai)
+    """
     print("🧠 Wake up Gemini...")
-    
-    # NEW CLIENT SETUP
+    if not GEMINI_API_KEY:
+        print("❌ Error: Missing GEMINI_API_KEY")
+        return "Error: No API Key found."
+
+    # NEW SDK CLIENT SETUP
     client = genai.Client(api_key=GEMINI_API_KEY)
     
     prompt = f"""
@@ -91,33 +90,36 @@ def summarize_with_ai(raw_news):
     GO.
     """
 
-    # NEW GENERATION CALL
-    response = client.models.generate_content(
-        model='gemini-2.0-flash', 
-        contents=prompt
-    )
-    return response.text
+    # NEW GENERATE CONTENT CALL
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash', 
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"❌ Gemini Error: {e}")
+        return "Error generating summary."
 
 def send_telegram(message):
-    """
-    Delivers the goods to your phone.
-    """
     print("🚀 Sending to Telegram...")
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("❌ Error: Missing Telegram Creds")
+        return
+
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
-    
-    # If CHAT_ID isn't in env vars, you might need to message the bot first to get it.
-    # For now, we assume you put it in GitHub Secrets or hardcoded it.
-    # To find your Chat ID: Message @userinfobot on Telegram.
-    
-    bot.send_message(CHAT_ID, message, parse_mode=None) # parse_mode=None is safer for AI text
-    print("✅ Message sent!")
+    try:
+        bot.send_message(CHAT_ID, message, parse_mode=None)
+        print("✅ Message sent!")
+    except Exception as e:
+        print(f"❌ Telegram Error: {e}")
 
 def main():
     print("--- 🏁 STARTING DAILY AGENT ---")
     
     # 1. Scrape
     raw_data = get_smart_news()
-    if len(raw_data) < 500:
+    if not raw_data or len(raw_data) < 100:
         print("❌ Error: Not enough data scraped.")
         return
 

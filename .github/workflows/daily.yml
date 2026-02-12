@@ -2,22 +2,30 @@ name: Daily News Agent
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Runs every day at 8:00 UTC
-  workflow_dispatch:      # Allows you to click "Run Now" to test
+    - cron: '0 8 * * *'  # Runs at 8:00 AM UTC
+  workflow_dispatch:      # Allows manual trigger
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install pyTelegramBotAPI google-generativeai
-      - name: Run Agent
+          python-version: '3.11'  # Crucial: Use 3.11 for latest AI tools
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run The Agent
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIRECRAWL_KEY: ${{ secrets.FIRECRAWL_KEY }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
