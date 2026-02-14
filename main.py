@@ -1,6 +1,6 @@
 import os
 import time
-import requests
+import requests  # <--- WE ARE USING RAW HTTP NOW
 import telebot
 from firecrawl import Firecrawl
 from dotenv import load_dotenv
@@ -39,6 +39,7 @@ def get_smart_news():
     for url in SOURCES:
         try:
             print(f"   --> Scraping: {url}")
+            # Firecrawl v1 direct scrape
             data = app.scrape(url, formats=['markdown'])
             
             if hasattr(data, 'markdown'):
@@ -63,9 +64,9 @@ def summarize_with_ai(raw_news):
     if not GEMINI_API_KEY:
         return "Error: No API Key found."
 
-    # --- FIX: We are now explicitly using the stable 1.5-flash model ---
-    # This model has generous free-tier limits and does not require a billing account.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # --- THE "STOP THINKING" REST API CALL ---
+    # We use the standard endpoint which supports API Keys
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
     
     headers = {"Content-Type": "application/json"}
     
@@ -94,6 +95,14 @@ def summarize_with_ai(raw_news):
             return response.json()['candidates'][0]['content']['parts'][0]['text']
         else:
             print(f"❌ Gemini REST Error: {response.status_code} - {response.text}")
+            # Fallback to a simpler model if 2.5/2.0 fails or is rate limited
+            if response.status_code == 404 or response.status_code == 429:
+                 print("   -> Retrying with gemini-1.5-flash...")
+                 fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+                 fallback_resp = requests.post(fallback_url, headers=headers, json=payload)
+                 if fallback_resp.status_code == 200:
+                     return fallback_resp.json()['candidates'][0]['content']['parts'][0]['text']
+                 
             return f"Error: AI generation failed ({response.status_code})"
             
     except Exception as e:
